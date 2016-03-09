@@ -8,23 +8,35 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.commons.digester3.Digester;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.xml.sax.SAXException;
 
 /**
  * "Get Notification Message Telemetry" result object as defined in https://msdn.microsoft.com/en-us/library/mt608135.aspx
- *
- * TODO add ApnsOutcomeCounts, MpnsOutcomeCounts, WnsOutcomeCounts, GcmOutcomeCounts, AdmOutcomeCounts
  */
 public class NotificationDetails implements Serializable {
 
-  private static final long serialVersionUID = -5334715903250590288L;
+  private static final long serialVersionUID = 5020317174414641455L;
   private static final ThreadLocal<Digester> xmlParser;
+  private static final Log logger = LogFactory.getLog(NotificationDetails.class);
   private String notificationId;
   private String location;
+  /** 
+   * Known values so far: 
+   *  - Abandoned
+   *  - Completed
+   *  - Enqueued
+   *  - NoTargetFound
+   *  - Processing
+   *  - Unknown
+   */
   private String state;
   private Date enqueueTime;
   private Date startTime;
@@ -32,6 +44,11 @@ public class NotificationDetails implements Serializable {
   private String notificationBody;
   private final List<String> tags = new ArrayList<>();
   private final List<String> targetPlatforms = new ArrayList<>();
+  private Map<String, Integer> admOutcomeCounts;
+  private Map<String, Integer> apnsOutcomeCounts;
+  private Map<String, Integer> gcmOutcomeCounts;
+  private Map<String, Integer> mpnsOutcomeCounts;
+  private Map<String, Integer> wnsOutcomeCounts;
 
   static {
     xmlParser = new ThreadLocal<Digester>() {
@@ -39,10 +56,18 @@ public class NotificationDetails implements Serializable {
       protected Digester initialValue() {
         Digester digester = new Digester();
         digester.addObjectCreate("NotificationDetails", NotificationDetails.class);
+        // for each known simple property, call the corresponding setter:
         for (String property : Arrays.asList("NotificationId", "Location", "State",
           "EnqueueTime", "StartTime", "EndTime", "NotificationBody", "Tags", "TargetPlatforms")) {
-          digester.addCallMethod("*/" + property, "set" + property, 1);
-          digester.addCallParam("*/" + property, 0);
+          digester.addCallMethod("NotificationDetails/" + property, "set" + property, 1);
+          digester.addCallParam("NotificationDetails/" + property, 0);
+        }
+        // for each service provider, call the corresponding outcome-count method:
+        for (String notificationType : Arrays.asList("Adm", "Apns", "Gcm", "Mpns", "Wns")) {
+          digester.addCallMethod("NotificationDetails/" + notificationType + "OutcomeCounts/Outcome",
+            "add" + notificationType + "Outcome", 2);
+          digester.addCallParam("NotificationDetails/" + notificationType + "OutcomeCounts/Outcome/Name", 0);
+          digester.addCallParam("NotificationDetails/" + notificationType + "OutcomeCounts/Outcome/Count", 1);
         }
         return digester;
       }
@@ -78,7 +103,7 @@ public class NotificationDetails implements Serializable {
   }
 
   public void setEnqueueTime(String enqueueTime) {
-    this.enqueueTime = enqueueTime != null ? DatatypeConverter.parseDateTime(enqueueTime).getTime() : null;
+    this.enqueueTime = parseDate(enqueueTime);
   }
 
   public Date getStartTime() {
@@ -86,7 +111,7 @@ public class NotificationDetails implements Serializable {
   }
 
   public void setStartTime(String startTime) {
-    this.startTime = startTime != null ? DatatypeConverter.parseDateTime(startTime).getTime() : null;
+    this.startTime = parseDate(startTime);
   }
 
   public Date getEndTime() {
@@ -94,7 +119,7 @@ public class NotificationDetails implements Serializable {
   }
 
   public void setEndTime(String endTime) {
-    this.endTime = endTime != null ? DatatypeConverter.parseDateTime(endTime).getTime() : null;
+    this.endTime = parseDate(endTime);
   }
 
   public String getNotificationBody() {
@@ -123,6 +148,61 @@ public class NotificationDetails implements Serializable {
     Collections.addAll(this.targetPlatforms, targetPlatforms.split(","));
   }
 
+  public Map<String, Integer> getAdmOutcomeCounts() {
+    return admOutcomeCounts;
+  }
+
+  public void addAdmOutcome(String name, String count) {
+    if (admOutcomeCounts == null) {
+      admOutcomeCounts = new TreeMap<>();
+    }
+    admOutcomeCounts.put(name, parseInt(count));
+  }
+
+  public Map<String, Integer> getApnsOutcomeCounts() {
+    return apnsOutcomeCounts;
+  }
+
+  public void addApnsOutcome(String name, String count) {
+    if (apnsOutcomeCounts == null) {
+      apnsOutcomeCounts = new TreeMap<>();
+    }
+    apnsOutcomeCounts.put(name, parseInt(count));
+  }
+
+  public Map<String, Integer> getGcmOutcomeCounts() {
+    return gcmOutcomeCounts;
+  }
+
+  public void addGcmOutcome(String name, String count) {
+    if (gcmOutcomeCounts == null) {
+      gcmOutcomeCounts = new TreeMap<>();
+    }
+    gcmOutcomeCounts.put(name, parseInt(count));
+  }
+
+  public Map<String, Integer> getMpnsOutcomeCounts() {
+    return mpnsOutcomeCounts;
+  }
+
+  public void addMpnsOutcome(String name, String count) {
+    if (mpnsOutcomeCounts == null) {
+      mpnsOutcomeCounts = new TreeMap<>();
+    }
+    mpnsOutcomeCounts.put(name, parseInt(count));
+  }
+
+  public Map<String, Integer> getWnsOutcomeCounts() {
+    return wnsOutcomeCounts;
+  }
+
+  public void addWnsOutcome(String name, String count) {
+    if (wnsOutcomeCounts == null) {
+      wnsOutcomeCounts = new TreeMap<>();
+    }
+    wnsOutcomeCounts.put(name, parseInt(count));
+  }
+
   public static NotificationDetails parse(InputStream content) throws IOException, SAXException {
     return xmlParser.get().parse(content);
   }
@@ -140,5 +220,27 @@ public class NotificationDetails implements Serializable {
       ", targetPlatforms=" + targetPlatforms +
       ", notificationBody='" + notificationBody + '\'' +
       '}';
+  }
+
+  private Date parseDate(String value) {
+    if (value != null) {
+      try {
+        return DatatypeConverter.parseDateTime(value).getTime();
+      } catch (RuntimeException e) {
+        logger.warn("Cannot parse date: '" + value + "'");
+      }
+    }
+    return null;
+  }
+
+  private Integer parseInt(String value) {
+    if (value != null) {
+      try {
+        return Integer.valueOf(value);
+      } catch (RuntimeException e) {
+        logger.warn("Cannot parse integer: '" + value + "'");
+      }
+    }
+    return null;
   }
 }

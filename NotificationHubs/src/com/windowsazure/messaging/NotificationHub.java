@@ -1,6 +1,8 @@
 package com.windowsazure.messaging;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
@@ -990,7 +992,7 @@ public class NotificationHub implements INotificationHub {
 	@Override
 	public void getNotificationMessageTelemetryAsync(String messageId, final FutureCallback<NotificationDetails> callback) {
 		try {
-			URI uri = new URI(endpoint + hubPath + "/messages/" + messageId + APIVERSION);
+			final URI uri = new URI(endpoint + hubPath + "/messages/" + messageId + APIVERSION);
 			final HttpGet get = new HttpGet(uri);
 			get.setHeader("Authorization", generateSasToken(uri));
 			HttpClientManager.getHttpAsyncClient().execute(get, new FutureCallback<HttpResponse>() {
@@ -1001,7 +1003,15 @@ public class NotificationHub implements INotificationHub {
 							callback.failed(new RuntimeException(getErrorString(response)));
 							return;
 						}
-						callback.completed(NotificationDetails.parse(response.getEntity().getContent()));
+						final InputStream data;
+						if (logger.isTraceEnabled()) {
+							String content = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+							logger.trace("GET " + uri + "\n\t" + content);
+							data = new ByteArrayInputStream(content.getBytes("UTF-8"));
+						} else {
+							data = response.getEntity().getContent();
+						}
+						callback.completed(NotificationDetails.parse(data));
 					} catch (Exception e) {
 						callback.failed(e);
 					} finally {
