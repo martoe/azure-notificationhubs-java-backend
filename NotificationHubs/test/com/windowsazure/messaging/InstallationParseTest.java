@@ -5,7 +5,10 @@ import static org.junit.Assert.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
@@ -38,7 +41,9 @@ public class InstallationParseTest {
 		assertNotNull(installation.getTemplates());
 		assertEquals("<?xml version=\"1.0\" encoding=\"utf-8\"?>", installation.getTemplates().get("template1").getBody());
 		Date expiration = installation.getExpirationTime();
-		assertTrue(expiration.toString().equalsIgnoreCase("Wed Nov 26 15:34:01 PST 2014"));
+		SimpleDateFormat dateFormat = new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US);
+		dateFormat.setTimeZone(TimeZone.getTimeZone("PST"));
+		assertEquals("Wed Nov 26 15:34:01 PST 2014", dateFormat.format(expiration));
 				
 		String expectedResultJson = IOUtils.toString(this.getClass().getResourceAsStream("InstallationWnsFullNoSpaces"));	
 		String  actualResultJson = installation.toJson();
