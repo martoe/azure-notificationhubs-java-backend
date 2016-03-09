@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -978,6 +979,52 @@ public class NotificationHub implements INotificationHub {
 		getAllNotificationHubJobsAsync(callback);
 		return callback.getResult();
 	}	
+
+	@Override
+	public NotificationDetails getNotificationMessageTelemetry(String messageId) {
+		SyncCallback<NotificationDetails> callback = new SyncCallback<>();
+		getNotificationMessageTelemetryAsync(messageId, callback);
+		return callback.getResult();
+	}
+
+	@Override
+	public void getNotificationMessageTelemetryAsync(String messageId, final FutureCallback<NotificationDetails> callback) {
+		try {
+			URI uri = new URI(endpoint + hubPath + "/messages/" + messageId + APIVERSION);
+			final HttpGet get = new HttpGet(uri);
+			get.setHeader("Authorization", generateSasToken(uri));
+			HttpClientManager.getHttpAsyncClient().execute(get, new FutureCallback<HttpResponse>() {
+				@Override
+				public void completed(final HttpResponse response) {
+					try {
+						if (response.getStatusLine().getStatusCode() != 200) {
+							callback.failed(new RuntimeException(getErrorString(response)));
+							return;
+						}
+						callback.completed(NotificationDetails.parse(response.getEntity().getContent()));
+					} catch (Exception e) {
+						callback.failed(e);
+					} finally {
+						get.releaseConnection();
+					}
+				}
+
+				@Override
+				public void failed(Exception e) {
+					get.releaseConnection();
+					callback.failed(e);
+				}
+
+				@Override
+				public void cancelled() {
+					get.releaseConnection();
+					callback.cancelled();
+				}
+			});
+		} catch (URISyntaxException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
 	private String getErrorString(HttpResponse response)
 			throws IllegalStateException, IOException {

@@ -188,7 +188,11 @@ public interface INotificationHub {
 	 * @return the notification message id
 	 */
 	String sendNotification(Notification notification, Set<String> tags);
-	
+
+	NotificationDetails getNotificationMessageTelemetry(String messageId);
+
+	void getNotificationMessageTelemetryAsync(String messageId, FutureCallback<NotificationDetails> callback);
+
 	/**
 	 * Sends a notifications to all eligible registrations that satisfy the provided tag expression
 	 * 
