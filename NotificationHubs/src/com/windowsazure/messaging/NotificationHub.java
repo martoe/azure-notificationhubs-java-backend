@@ -20,6 +20,8 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpDelete;
@@ -41,6 +43,8 @@ public class NotificationHub implements INotificationHub {
 	
 	private static final String APIVERSION = "?api-version=2014-09";
 	private static final String CONTENT_LOCATION_HEADER = "Location";
+  private static final Pattern locationPattern = Pattern.compile("^.*/messages/(.*)\\?.*$");
+  private final Log logger  = LogFactory.getLog(getClass());
 	private String endpoint;
 	private String hubPath;
 	private String SasKeyName;
@@ -513,55 +517,55 @@ public class NotificationHub implements INotificationHub {
 	}
 	
 	@Override
-	public void sendNotificationAsync(Notification notification, FutureCallback<Object> callback) {
+	public void sendNotificationAsync(Notification notification, FutureCallback<String> callback) {
 		scheduleNotificationAsync(notification, "", null, callback);
 	}
 	
 	@Override
-	public void sendNotification(Notification notification) {
-		SyncCallback<Object> callback = new SyncCallback<Object>();
+	public String sendNotification(Notification notification) {
+		SyncCallback<String> callback = new SyncCallback<>();
 		sendNotificationAsync(notification, callback);
-		callback.getResult();		
+		return callback.getResult();		
 	}
 
 	@Override
-	public void sendNotificationAsync(Notification notification, Set<String> tags, FutureCallback<Object> callback) {
+	public void sendNotificationAsync(Notification notification, Set<String> tags, FutureCallback<String> callback) {
 		scheduleNotificationAsync(notification, tags, null, callback);
 	}
 	
 	@Override
-	public void sendNotification(Notification notification, Set<String> tags) {
-		SyncCallback<Object> callback = new SyncCallback<Object>();
+	public String sendNotification(Notification notification, Set<String> tags) {
+		SyncCallback<String> callback = new SyncCallback<>();
 		sendNotificationAsync(notification, tags, callback);
-		callback.getResult();
+		return callback.getResult();
 	}
 	
 	@Override
-	public void sendNotificationAsync(Notification notification, String tagExpression, FutureCallback<Object> callback) {
+	public void sendNotificationAsync(Notification notification, String tagExpression, FutureCallback<String> callback) {
 		scheduleNotificationAsync(notification, tagExpression, null, callback);
 	}
 
 	@Override
-	public void sendNotification(Notification notification, String tagExpression) {
-		SyncCallback<Object> callback = new SyncCallback<Object>();
+	public String sendNotification(Notification notification, String tagExpression) {
+		SyncCallback<String> callback = new SyncCallback<>();
 		sendNotificationAsync(notification, tagExpression, callback);
-		callback.getResult();
+		return callback.getResult();
 	}
 	
 	@Override
-	public void scheduleNotificationAsync(Notification notification, Date scheduledTime, FutureCallback<Object> callback) {
+	public void scheduleNotificationAsync(Notification notification, Date scheduledTime, FutureCallback<String> callback) {
 		scheduleNotificationAsync(notification, "", scheduledTime, callback);
 	}
 	
 	@Override
-	public void scheduleNotification(Notification notification,	Date scheduledTime) {
-		SyncCallback<Object> callback = new SyncCallback<Object>();
+	public String scheduleNotification(Notification notification,	Date scheduledTime) {
+		SyncCallback<String> callback = new SyncCallback<>();
 		scheduleNotificationAsync(notification, scheduledTime, callback);
-		callback.getResult();
+		return callback.getResult();
 	}
 	
 	@Override
-	public void scheduleNotificationAsync(Notification notification, Set<String> tags, Date sheduledTime, FutureCallback<Object> callback) {
+	public void scheduleNotificationAsync(Notification notification, Set<String> tags, Date sheduledTime, FutureCallback<String> callback) {
 		if (tags.isEmpty())
 			throw new IllegalArgumentException(
 					"tags has to contain at least an element");
@@ -577,14 +581,14 @@ public class NotificationHub implements INotificationHub {
 	}
 
 	@Override
-	public void scheduleNotification(Notification notification,	Set<String> tags, Date sheduledTime) {
-		SyncCallback<Object> callback = new SyncCallback<Object>();
+	public String scheduleNotification(Notification notification,	Set<String> tags, Date sheduledTime) {
+		SyncCallback<String> callback = new SyncCallback<>();
 		scheduleNotificationAsync(notification, tags, sheduledTime, callback);
-		callback.getResult();		
+		return callback.getResult();		
 	}
 
 	@Override
-	public void scheduleNotificationAsync(Notification notification, String tagExpression, Date sheduledTime, final FutureCallback<Object> callback){
+	public void scheduleNotificationAsync(Notification notification, String tagExpression, Date sheduledTime, final FutureCallback<String> callback){
 		try {
 			URI uri = new URI(endpoint + hubPath + (sheduledTime == null ? "/messages" : "/schedulednotifications") + APIVERSION);
 			final HttpPost post = new HttpPost(uri);
@@ -618,7 +622,7 @@ public class NotificationHub implements INotificationHub {
 		    				callback.failed(new RuntimeException("Error: " + response.getStatusLine()	+ " body: " + msg));
 		    			}	    			
 		    			
-						callback.completed(null);
+						callback.completed(extractMessageId(response));
 		        	} catch (Exception e) {
 		        		callback.failed(e);	        		
 		        	} finally {
@@ -640,10 +644,10 @@ public class NotificationHub implements INotificationHub {
 	}
 	
 	@Override
-	public void scheduleNotification(Notification notification,	String tagExpression, Date sheduledTime) {
-		SyncCallback<Object> callback = new SyncCallback<Object>();
+	public String scheduleNotification(Notification notification,	String tagExpression, Date sheduledTime) {
+		SyncCallback<String> callback = new SyncCallback<>();
 		scheduleNotificationAsync(notification, tagExpression, sheduledTime, callback);
-		callback.getResult();
+		return callback.getResult();
 	}	
 	
 	@Override
@@ -1019,4 +1023,20 @@ public class NotificationHub implements INotificationHub {
 			throw new RuntimeException(e);
 		}
 	}
+
+  private String extractMessageId(HttpResponse response) {
+    // according to https://msdn.microsoft.com/en-us/library/dn223266.aspx,
+    // the response contains a "location" header with format:
+    // "https://{your namespace}.servicebus.windows.net/{your hub name}/messages/{notification message id}?api-version=2015-04"
+    Header locationHeader = response.getFirstHeader(CONTENT_LOCATION_HEADER);
+    String location = locationHeader != null ? locationHeader.getValue() : null;
+    if (location != null) {
+      Matcher messageIdMatcher = locationPattern.matcher(location);
+      if (messageIdMatcher.matches()) {
+        return messageIdMatcher.group(1);
+      }
+    }
+    logger.warn("Invalid location header: " + location);
+    return null;
+  }
 }
