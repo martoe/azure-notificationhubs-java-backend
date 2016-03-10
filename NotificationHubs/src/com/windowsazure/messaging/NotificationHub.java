@@ -480,7 +480,7 @@ public class NotificationHub implements INotificationHub {
 	
 	private void retrieveRegistrationCollectionAsync(String queryUri, final FutureCallback<CollectionResult> callback) {
 		try {
-			URI uri = new URI(queryUri);
+			final URI uri = new URI(queryUri);
 			final HttpGet get = new HttpGet(uri);
 			get.setHeader("Authorization", generateSasToken(uri));
 			
@@ -492,7 +492,15 @@ public class NotificationHub implements INotificationHub {
 		        			return;
 		    			}		    			
 		    			
-		        		CollectionResult result = Registration.parseRegistrations(response.getEntity().getContent());
+							final InputStream data;
+							if (logger.isTraceEnabled()) {
+								String content = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+								logger.trace("GET " + uri + "\n\t" + content);
+								data = new ByteArrayInputStream(content.getBytes("UTF-8"));
+							} else {
+								data = response.getEntity().getContent();
+							}
+		        		CollectionResult result = Registration.parseRegistrations(data);
 		    			Header contTokenHeader = response.getFirstHeader("X-MS-ContinuationToken");
 		    			if (contTokenHeader != null) {
 		    				result.setContinuationToken(contTokenHeader.getValue());
